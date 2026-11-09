@@ -35,7 +35,10 @@ def search_tree_svg(expansions: Iterable[tuple[Any, Iterable[Any]]],
                     edge_label: Callable[[Any], str] | None = str,
                     solution: Any = None,
                     max_nodes: int = 1000,
-                    fade: bool = True) -> str:
+                    fade: bool = True,
+                    node_note: Callable[[Any], str] | None = None,
+                    numbers: bool = True,
+                    boxes: dict | None = None) -> str:
     """
     Returns an SVG image of the search tree(s) explored by a search algorithm.
 
@@ -51,7 +54,10 @@ def search_tree_svg(expansions: Iterable[tuple[Any, Iterable[Any]]],
     (drawn at the origin) along with their width and height. `edge_label`
     turns the action leading to a node into text written above the node,
     or is None to omit these labels. If `solution` is a node, the path
-    leading to it is highlighted.
+    leading to it is highlighted. `node_note(node)` optionally returns
+    text written below the node, next to its expansion number (which is
+    omitted if `numbers` is False). If `boxes` is a dict, it is filled with
+    the bounding box `(x, y, width, height)` of each node's drawing.
     """
     # collect tree structure and expansion order
     children = {}
@@ -80,13 +86,16 @@ def search_tree_svg(expansions: Iterable[tuple[Any, Iterable[Any]]],
     drawings = {node: draw_state(node.state, node.action) for node in nodes}
     labels = {node: edge_label(node.action) if edge_label and node.action is not None else ''
               for node in nodes}
+    notes = {node: '  '.join(([f"#{number[node]}"] if numbers and node in number else []) +
+                             ([node_note(node)] if node_note is not None else []))
+             for node in nodes}
     box_height = max(height for _, _, height in drawings.values())
     label_height = TEXT_HEIGHT if edge_label else 0
     level_height = label_height + box_height + TEXT_HEIGHT + V_GAP
 
     def footprint(node) -> float:
-        # horizontal space taken by a node's drawing and the label above it
-        return max(drawings[node][1], 0.6 * FONT_SIZE * len(labels[node]))
+        # horizontal space taken by a node's drawing and the texts above and below it
+        return max(drawings[node][1], 0.6 * FONT_SIZE * max(len(labels[node]), len(notes[node])))
 
     # place leaves from left to right and center parents above their children;
     # if a parent would overlap its left neighbor, shift its whole subtree right
@@ -110,7 +119,7 @@ def search_tree_svg(expansions: Iterable[tuple[Any, Iterable[Any]]],
         if successors:
             xs = [place(child, depth + 1) for child in successors]
             x = (xs[0] + xs[-1]) / 2
-            overlap = right_edge.get(depth, float('-inf')) + H_GAP - (x - half)
+            overlap = right_edge.get(depth, MARGIN - H_GAP) + H_GAP - (x - half)
             if overlap > 0:
                 for child in successors:
                     shift(child, overlap)
@@ -164,13 +173,15 @@ def search_tree_svg(expansions: Iterable[tuple[Any, Iterable[Any]]],
             parts.append(f'<text x="{x:g}" y="{y - 4:g}" text-anchor="middle" '
                          f'font-size="{FONT_SIZE}">{escape(labels[node])}</text>')
         parts.append(f'<g transform="translate({x - width / 2:g},{y:g})">{svg}</g>')
+        if boxes is not None:
+            boxes[node] = (x - width / 2, y, width, height)
         if node is solution:
             parts.append(f'<rect x="{x - width / 2 - 3:g}" y="{y - 3:g}" '
                          f'width="{width + 6:g}" height="{height + 6:g}" fill="none" '
                          f'stroke="{SOLUTION_COLOR}" stroke-width="3"/>')
-        if expanded:
+        if notes[node]:
             parts.append(f'<text x="{x:g}" y="{y + height + TEXT_HEIGHT - 2:g}" '
-                         f'text-anchor="middle" font-size="{FONT_SIZE}">#{number[node]}</text>')
+                         f'text-anchor="middle" font-size="{FONT_SIZE}">{escape(notes[node])}</text>')
         parts.append('</g>')
 
     total_width = max(right_edge.values()) + MARGIN
@@ -184,9 +195,12 @@ def draw_search_tree(expansions: Iterable[tuple[Any, Iterable[Any]]],
                      edge_label: Callable[[Any], str] | None = str,
                      solution: Any = None,
                      max_nodes: int = 1000,
-                     fade: bool = True):
+                     fade: bool = True,
+                     node_note: Callable[[Any], str] | None = None,
+                     numbers: bool = True):
     """
     Displays the search tree(s) explored by a search algorithm.
     See `search_tree_svg()` for the arguments.
     """
-    show_svg(search_tree_svg(expansions, draw_state, edge_label, solution, max_nodes, fade))
+    show_svg(search_tree_svg(expansions, draw_state, edge_label, solution, max_nodes, fade,
+                             node_note, numbers))
